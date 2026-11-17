@@ -74,25 +74,76 @@ struct Sample {
     y: f64,
 }
 
+/// Following the cursor's motion to the edge is trusted up to this far
+/// (platform units); further out the plain sample is used.
+const MAX_EXTRAPOLATION: f64 = 400.0;
+
+/// Where the ray from `p` (inside `r`) along `dir` reaches the edge of `r`,
+/// if that is at most [`MAX_EXTRAPOLATION`] away. On a diagonal move this is
+/// where the cursor really crossed; a perpendicular snap would be off along
+/// the edge.
+fn ray_to_edge(r: &Rect, p: (f64, f64), dir: (f64, f64)) -> Option<(f64, f64)> {
+    let ((x, y), (dx, dy)) = (p, dir);
+    let len = dx.hypot(dy);
+    if len < 0.5 {
+        return None;
+    }
+    let along = |v: f64, d: f64, lo: f64, hi: f64| {
+        if d > 0.0 {
+            (hi - v) / d
+        } else if d < 0.0 {
+            (lo - v) / d
+        } else {
+            f64::INFINITY
+        }
+    };
+    let t = along(x, dx, r.left, r.right - 1.0).min(along(y, dy, r.top, r.bottom - 1.0));
+    if !(0.0..=MAX_EXTRAPOLATION / len).contains(&t) {
+        return None;
+    }
+    Some(((x + t * dx).clamp(r.left, r.right - 1.0), (y + t * dy).clamp(r.top, r.bottom - 1.0)))
+}
+
 /// Picks the exit point from samples (oldest first): the newest one on an
 /// edge, else the one closest to an edge (never the warped-to centre), else
-/// the newest one.
+/// the newest one. A sample short of the edge is carried on along the motion
+/// since the sample before it, to where it meets the edge.
 fn exit_point(samples: &[Sample], before: Instant, bounds: impl Fn(f64, f64) -> Option<Rect>) -> Option<(f64, f64)> {
     let recent: Vec<(&Sample, Option<f64>)> = samples
         .iter()
         .filter(|s| s.at <= before)
         .map(|s| (s, bounds(s.x, s.y).map(|r| r.edge_distance(s.x, s.y))))
         .collect();
-    let on_edge = recent.iter().rev().find(|(_, d)| d.is_some_and(|d| d <= 2.0));
+    let on_edge = recent.iter().rposition(|(_, d)| d.is_some_and(|d| d <= 2.0));
     let closest = recent
         .iter()
+        .enumerate()
         .rev()
-        .filter(|(_, d)| d.is_some())
-        .min_by(|a, b| a.1.unwrap_or(f64::MAX).total_cmp(&b.1.unwrap_or(f64::MAX)));
-    on_edge
-        .or(closest)
-        .or(recent.last())
-        .map(|(s, _)| (s.x, s.y))
+        .filter(|(_, (_, d))| d.is_some())
+        .min_by(|a, b| a.1 .1.unwrap_or(f64::MAX).total_cmp(&b.1 .1.unwrap_or(f64::MAX)))
+        .map(|(i, _)| i);
+    let i = on_edge.or(closest).or(recent.len().checked_sub(1))?;
+    let s = recent[i].0;
+    if i > 0 && recent[i].1.is_some_and(|d| d > 2.0) {
+        let prev = recent[i - 1].0;
+        let followed = bounds(s.x, s.y).and_then(|r| ray_to_edge(&r, (s.x, s.y), (s.x - prev.x, s.y - prev.y)));
+        if followed.is_some() {
+            return followed;
+        }
+    }
+    Some((s.x, s.y))
+}
+
+/// Picks the entry point from samples (oldest first) taken since the cursor
+/// came onto the screen: the first of them, followed back against the motion
+/// (towards the newest sample) to the edge. Without motion, the newest one.
+fn entry_point(samples: &[Sample], since: Instant, bounds: impl Fn(f64, f64) -> Option<Rect>) -> Option<(f64, f64)> {
+    let after: Vec<&Sample> = samples.iter().filter(|s| s.at >= since).collect();
+    let (first, newest) = (*after.first()?, *after.last()?);
+    let back = (first.x - newest.x, first.y - newest.y);
+    bounds(first.x, first.y)
+        .and_then(|r| ray_to_edge(&r, (first.x, first.y), back))
+        .or(Some((newest.x, newest.y)))
 }
 
 /// Samples the cursor on a background thread while `active`.
@@ -145,6 +196,13 @@ impl Trail {
         let samples: Vec<Sample> = self.samples.lock().ok()?.iter().copied().collect();
         exit_point(&samples, at, sys::display_bounds_at).or_else(sys::cursor_position)
     }
+
+    /// Where the cursor most likely came onto the screen at `since`. Call it a
+    /// little later, once a few samples on this screen exist.
+    pub fn entry_point(&self, since: Instant) -> Option<(f64, f64)> {
+        let samples: Vec<Sample> = self.samples.lock().ok()?.iter().copied().collect();
+        entry_point(&samples, since, sys::display_bounds_at).or_else(sys::cursor_position)
+    }
 }
 
 impl Drop for Trail {
@@ -157,6 +215,10 @@ impl Drop for Trail {
 mod tests {
     use super::*;
 
+    fn close(p: Option<(f64, f64)>, x: f64, y: f64) -> bool {
+        p.is_some_and(|(px, py)| (px - x).abs() < 1e-6 && (py - y).abs() < 1e-6)
+    }
+
     #[test]
     fn exit_point_prefers_last_edge_sample() {
         let t0 = Instant::now();
@@ -166,9 +228,10 @@ mod tests {
         // moving right, touching the edge, then warped to the centre
         let s = [at(0, 3700.0, 500.0), at(10, 3839.0, 520.0), at(20, 1920.0, 1080.0)];
         assert_eq!(exit_point(&s, t0 + Duration::from_millis(30), bounds), Some((3839.0, 520.0)));
-        // no edge sample: the one closest to an edge, not the warped centre
+        // no edge sample: the one closest to an edge (not the warped centre),
+        // carried on along its motion (25, 10) to the edge
         let s = [at(0, 3800.0, 500.0), at(10, 3825.0, 510.0), at(20, 1920.0, 1080.0)];
-        assert_eq!(exit_point(&s, t0 + Duration::from_millis(30), bounds), Some((3825.0, 510.0)));
+        assert!(close(exit_point(&s, t0 + Duration::from_millis(30), bounds), 3839.0, 515.6));
         // no bounds known: newest one
         let s = [at(0, 100.0, 100.0), at(10, 200.0, 200.0)];
         assert_eq!(exit_point(&s, t0 + Duration::from_millis(30), |_, _| None), Some((200.0, 200.0)));
@@ -176,6 +239,27 @@ mod tests {
         let s = [at(0, 0.0, 300.0), at(50, 3839.0, 10.0)];
         assert_eq!(exit_point(&s, t0 + Duration::from_millis(20), bounds), Some((0.0, 300.0)));
         assert_eq!(exit_point(&[], t0, bounds), None);
+    }
+
+    #[test]
+    fn diagonal_moves_meet_the_edge_where_they_cross_it() {
+        let t0 = Instant::now();
+        let at = |ms: u64, x: f64, y: f64| Sample { at: t0 + Duration::from_millis(ms), x, y };
+        let screen = Rect { left: 0.0, top: 0.0, right: 1920.0, bottom: 2160.0 };
+        let bounds = |_: f64, _: f64| Some(screen);
+        // leaving through the left edge at 45° downwards: last sample 60 inside
+        let s = [at(0, 120.0, 1000.0), at(10, 60.0, 1060.0), at(20, 960.0, 1080.0)];
+        assert!(close(exit_point(&s, t0 + Duration::from_millis(15), bounds), 0.0, 1120.0));
+        // entering through the left edge moving right and up: followed back
+        let s = [at(0, 1500.0, 900.0), at(30, 40.0, 1200.0), at(40, 80.0, 1180.0), at(50, 120.0, 1160.0)];
+        assert!(close(entry_point(&s, t0 + Duration::from_millis(25), bounds), 0.0, 1220.0));
+        // not moving: the newest sample (snapped onto the edge later)
+        let s = [at(30, 20.0, 700.0), at(40, 20.0, 700.0)];
+        assert!(close(entry_point(&s, t0 + Duration::from_millis(25), bounds), 20.0, 700.0));
+        // implausibly far back: not trusted
+        let s = [at(30, 900.0, 700.0), at(40, 905.0, 700.0)];
+        assert!(close(entry_point(&s, t0 + Duration::from_millis(25), bounds), 905.0, 700.0));
+        assert_eq!(entry_point(&[], t0, bounds), None);
     }
 
     #[test]

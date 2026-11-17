@@ -159,8 +159,10 @@ pub type ShowFn = Arc<dyn Fn(Burst) + Send + Sync>;
 
 /// How often the client says hello.
 const HELLO_EVERY: Duration = Duration::from_secs(3);
-/// The client's cursor is warped to the entry point right after the switch.
-const ENTRY_SETTLE: Duration = Duration::from_millis(25);
+/// The client's cursor is warped to the entry point right after the switch;
+/// after this wait a few cursor samples on this screen show where it came
+/// from (the trail samples every 10 ms).
+const ENTRY_SETTLE: Duration = Duration::from_millis(35);
 /// One crossing can be seen twice (the client's own log and the server's UDP
 /// message). The second of the same kind inside this window is dropped.
 const BURST_COALESCE: Duration = Duration::from_millis(400);
@@ -354,8 +356,9 @@ impl Inner {
             return;
         }
         let point = if entered {
+            let since = Instant::now();
             std::thread::sleep(ENTRY_SETTLE);
-            cursor_position()
+            self.trail.entry_point(since)
         } else {
             self.trail.exit_point(Instant::now())
         };
@@ -417,8 +420,9 @@ impl Inner {
                 if !self.claim(Kind::Entry) {
                     return;
                 }
+                let since = Instant::now();
                 std::thread::sleep(ENTRY_SETTLE);
-                let (px, py) = cursor_position().unwrap_or((f64::from(x), f64::from(y)));
+                let (px, py) = self.trail.entry_point(since).unwrap_or((f64::from(x), f64::from(y)));
                 self.burst(px, py, Kind::Entry, look);
             }
             Msg::Leave { name, .. } if for_me(&name) => {

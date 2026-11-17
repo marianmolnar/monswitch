@@ -7,9 +7,13 @@
 //! - The Deskflow **server** sees every switch in deskflow-core's log
 //!   ([`kvm::CoreEvent::Switch`]). It shows its own burst and tells the client
 //!   over a tiny UDP message ([`proto`]).
-//! - The **client** says hello to the server every few seconds so the server
-//!   knows where to send; the server address comes from the client core's log
-//!   (or `[kvm.effect].peer`).
+//! - The **client** does not get that line. It logs `entering computer` /
+//!   `leaving computer` ([`kvm::CoreEvent::Presence`]) and shows the burst
+//!   from those, at the cursor (entry) or the last edge sample (exit). A UDP
+//!   message for the same crossing is ignored, so the burst plays once even
+//!   when the server also sends one. The client still says hello every few
+//!   seconds; the server address comes from the client core's log (or
+//!   `[kvm.effect].peer`).
 //! - The overlay ([`Overlay`]) is a native transparent, click-through, topmost
 //!   window created once at startup; it never takes input.
 
@@ -131,6 +135,9 @@ pub type ShowFn = Arc<dyn Fn(Burst) + Send + Sync>;
 const HELLO_EVERY: Duration = Duration::from_secs(3);
 /// The client's cursor is warped to the entry point right after the switch.
 const ENTRY_SETTLE: Duration = Duration::from_millis(25);
+/// One crossing can be seen twice (the client's own log and the server's UDP
+/// message). The second of the same kind inside this window is dropped.
+const BURST_COALESCE: Duration = Duration::from_millis(400);
 
 struct State {
     role: KvmRole,
@@ -141,6 +148,8 @@ struct State {
     my_name: Option<String>,
     /// Client: server address from deskflow-core's log.
     server: Option<String>,
+    /// Last burst we committed to showing.
+    last_shown: Option<(Kind, Instant)>,
 }
 
 impl State {
@@ -189,6 +198,7 @@ impl Effects {
             my_name: configured_name.clone().or_else(hostname),
             configured_name,
             server: None,
+            last_shown: None,
         };
         let trail = Trail::start();
         trail.set_active(state.active());
@@ -254,8 +264,21 @@ impl Inner {
 
     fn burst(&self, x: f64, y: f64, kind: Kind, look: Look) {
         let edge = edge_at(x, y);
-        log::debug!("effect: {kind:?} burst at {x:.0},{y:.0} ({edge:?})");
+        log::info!("effect: {kind:?} burst at {x:.0},{y:.0} ({edge:?})");
         (self.show)(Burst { x, y, kind, look, edge });
+    }
+
+    /// False when this kind was already shown for the current crossing.
+    fn claim(&self, kind: Kind) -> bool {
+        let mut s = self.lock();
+        let now = Instant::now();
+        if let Some((prev, at)) = s.last_shown {
+            if prev == kind && now.saturating_duration_since(at) < BURST_COALESCE {
+                return false;
+            }
+        }
+        s.last_shown = Some((kind, now));
+        true
     }
 
     fn say_hello(&self) {
@@ -287,6 +310,33 @@ impl Inner {
                 self.say_hello();
             }
             CoreEvent::Switch { from, to, x, y } => self.on_switch(from, to, *x, *y),
+            CoreEvent::Presence { entered } => self.on_presence(*entered),
+        }
+    }
+
+    /// Client side: our own core logged that the cursor entered or left.
+    fn on_presence(&self, entered: bool) {
+        let look = {
+            let s = self.lock();
+            if s.role != KvmRole::Client || !s.cfg.enabled {
+                return;
+            }
+            Look::from_config(&s.cfg)
+        };
+        let kind = if entered { Kind::Entry } else { Kind::Exit };
+        if !self.claim(kind) {
+            return;
+        }
+        let point = if entered {
+            std::thread::sleep(ENTRY_SETTLE);
+            cursor_position()
+        } else {
+            self.trail.exit_point(Instant::now())
+        };
+        if let Some((x, y)) = point {
+            self.burst(x, y, kind, look);
+        } else {
+            log::debug!("effect: no cursor position for {kind:?}");
         }
     }
 
@@ -338,11 +388,17 @@ impl Inner {
         match msg {
             Msg::Hello { .. } => {}
             Msg::Enter { x, y, name } if for_me(&name) => {
+                if !self.claim(Kind::Entry) {
+                    return;
+                }
                 std::thread::sleep(ENTRY_SETTLE);
                 let (px, py) = cursor_position().unwrap_or((f64::from(x), f64::from(y)));
                 self.burst(px, py, Kind::Entry, look);
             }
             Msg::Leave { name, .. } if for_me(&name) => {
+                if !self.claim(Kind::Exit) {
+                    return;
+                }
                 if let Some((px, py)) = self.trail.exit_point(Instant::now()) {
                     self.burst(px, py, Kind::Exit, look);
                 }
@@ -388,6 +444,46 @@ mod tests {
         off.effect.enabled = false;
         fx.set_config(&off);
         fx.on_core_event(&CoreEvent::Switch { from: "Mac".into(), to: "PC".into(), x: 1, y: 1 });
+        assert_eq!(seen.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn server_ignores_client_presence_lines() {
+        let seen = Arc::new(Mutex::new(0u32));
+        let s2 = seen.clone();
+        let kvm = KvmConfig {
+            role: KvmRole::Server,
+            effect: EffectConfig { port: 0, ..EffectConfig::default() },
+            ..KvmConfig::default()
+        };
+        let fx = Effects::start(&kvm, Arc::new(move |_| *s2.lock().unwrap() += 1));
+        fx.on_core_event(&CoreEvent::Presence { entered: true });
+        fx.on_core_event(&CoreEvent::Presence { entered: false });
+        assert_eq!(*seen.lock().unwrap(), 0);
+    }
+
+    #[test]
+    fn client_plays_its_own_enter_and_coalesces_the_repeat() {
+        if cursor_position().is_none() {
+            return;
+        }
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let s2 = seen.clone();
+        let kvm = KvmConfig {
+            role: KvmRole::Client,
+            effect: EffectConfig { port: 0, ..EffectConfig::default() },
+            ..KvmConfig::default()
+        };
+        let fx = Effects::start(&kvm, Arc::new(move |b| s2.lock().unwrap().push(b.kind)));
+        fx.on_core_event(&CoreEvent::Presence { entered: true });
+        fx.on_core_event(&CoreEvent::Presence { entered: true });
+        let got = seen.lock().unwrap().clone();
+        assert_eq!(got, vec![Kind::Entry]);
+
+        let mut off = kvm.clone();
+        off.effect.enabled = false;
+        fx.set_config(&off);
+        fx.on_core_event(&CoreEvent::Presence { entered: false });
         assert_eq!(seen.lock().unwrap().len(), 1);
     }
 }

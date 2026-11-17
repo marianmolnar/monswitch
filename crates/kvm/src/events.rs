@@ -13,6 +13,9 @@ pub enum CoreEvent {
     ServerAddress(String),
     /// The settings file the core uses (holds this machine's screen name).
     SettingsFile(String),
+    /// Client only. Deskflow logs `entering computer` / `leaving computer`
+    /// here; the `switch from "…" to "…" at x,y` line is server-only.
+    Presence { entered: bool },
 }
 
 /// Strips the `[timestamp] LEVEL: ` prefix.
@@ -73,7 +76,12 @@ pub fn parse_line(line: &str) -> Option<CoreEvent> {
         let path = path.trim();
         return (!path.is_empty()).then(|| CoreEvent::SettingsFile(path.to_string()));
     }
-    None
+
+    match msg {
+        "entering computer" => Some(CoreEvent::Presence { entered: true }),
+        "leaving computer" => Some(CoreEvent::Presence { entered: false }),
+        _ => None,
+    }
 }
 
 /// `computerName` from a Deskflow settings file (`[core] computerName=...`).
@@ -112,7 +120,12 @@ mod tests {
             Some(CoreEvent::Switch { from: "Mac Book".into(), to: "PC".into(), x: 3829, y: -4 })
         );
         assert_eq!(parse_line(r#"[x] INFO: switch from "a" to "b" at"#), None);
-        assert_eq!(parse_line("[x] INFO: leaving computer"), None);
+        assert_eq!(parse_line("[x] INFO: leaving computer"), Some(CoreEvent::Presence { entered: false }));
+        assert_eq!(
+            parse_line("[2026-11-17T19:35:25.279] INFO: entering computer"),
+            Some(CoreEvent::Presence { entered: true })
+        );
+        assert_eq!(parse_line("[x] INFO: entering computer now"), None);
     }
 
     #[test]

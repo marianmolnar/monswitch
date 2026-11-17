@@ -45,9 +45,17 @@ const SERVICE: &str = "SunshineService";
 #[cfg(windows)]
 const GRANT_ACE: &str = "(A;;RPWP;;;IU)";
 
+/// Full path of a Windows system tool. PATH is not used: on some machines it
+/// lacks System32 or the PowerShell folder ("program not found").
+#[cfg(windows)]
+fn system_tool(rel: &str) -> std::path::PathBuf {
+    let root = std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
+    std::path::Path::new(&root).join("System32").join(rel)
+}
+
 #[cfg(windows)]
 fn sc(args: &[&str]) -> Result<(i32, String), Error> {
-    let out = quiet(Command::new("sc.exe").args(args))
+    let out = quiet(Command::new(system_tool("sc.exe")).args(args))
         .output()
         .map_err(|e| Error::Sunshine(format!("sc.exe: {e}")))?;
     let mut text = String::from_utf8_lossy(&out.stdout).into_owned();
@@ -132,11 +140,14 @@ pub fn grant_control() -> Result<(), Error> {
     if wanted == current {
         return Ok(());
     }
-    // SDDL contains no spaces or quotes, so it is safe inside a single-quoted PS string.
+    // SDDL contains no spaces or quotes, so it is safe inside a single-quoted PS string;
+    // the sc.exe path gets its single quotes doubled, as PowerShell expects.
+    let sc_exe = system_tool("sc.exe").display().to_string().replace('\'', "''");
     let ps = format!(
-        "$p = Start-Process -FilePath sc.exe -ArgumentList 'sdset','{SERVICE}','{wanted}' -Verb RunAs -Wait -PassThru -WindowStyle Hidden; exit $p.ExitCode"
+        "$p = Start-Process -FilePath '{sc_exe}' -ArgumentList 'sdset','{SERVICE}','{wanted}' -Verb RunAs -Wait -PassThru -WindowStyle Hidden; exit $p.ExitCode"
     );
-    let status = quiet(Command::new("powershell.exe").args(["-NoProfile", "-NonInteractive", "-Command", &ps]))
+    let powershell = system_tool("WindowsPowerShell\\v1.0\\powershell.exe");
+    let status = quiet(Command::new(powershell).args(["-NoProfile", "-NonInteractive", "-Command", &ps]))
         .status()
         .map_err(|e| Error::Sunshine(format!("powershell: {e}")))?;
     if !status.success() || !has_control() {

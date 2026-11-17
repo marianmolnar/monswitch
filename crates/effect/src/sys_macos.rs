@@ -176,7 +176,8 @@ impl Overlay {
                         new_layers.push(p);
                     }
                 }
-                EffectStyle::Glow => {
+                // TODO: native rift; until then the glow layers stand in
+                EffectStyle::Glow | EffectStyle::Rift => {
                     let core = disc(center, r * 0.35, rgb, 0.3, 0.9, r * 0.35);
                     animate(&core, "transform.scale", &number(0.6), &number(1.6), dur);
                     animate(&core, "opacity", &number(1.0), &number(0.0), dur);

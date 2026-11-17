@@ -143,10 +143,13 @@ impl Default for KvmConfig {
 #[serde(rename_all = "lowercase")]
 pub enum EffectStyle {
     /// Puff of mist at the crossing point + light along the screen edge.
-    #[default]
     Smoke,
     Glow,
     Particles,
+    /// A portal tears open on the edge: swirling energy, chromatic rim,
+    /// light streaks pulled in (exit) or pouring out (entry), shock wave.
+    #[default]
+    Rift,
 }
 
 /// `[kvm.effect]` – burst at the screen edge when the cursor crosses to the other machine.
@@ -168,8 +171,8 @@ impl Default for EffectConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            style: EffectStyle::Smoke,
-            duration_ms: 550,
+            style: EffectStyle::Rift,
+            duration_ms: 700,
             color: "#F2F6FF".into(),
             port: 24810,
             peer: String::new(),
@@ -591,6 +594,7 @@ pub fn save_tray_settings(path: &Path, s: &TraySettings) -> Result<()> {
             EffectStyle::Smoke => "smoke",
             EffectStyle::Glow => "glow",
             EffectStyle::Particles => "particles",
+            EffectStyle::Rift => "rift",
         }),
     );
     fx.insert("duration_ms", value(i64::from(e.duration_ms)));
@@ -731,8 +735,8 @@ mod tests {
         assert_eq!(c.kvm.role, KvmRole::Off);
         assert_eq!(c.kvm.poll_ms, 3000);
         assert!(c.kvm.effect.enabled);
-        assert_eq!(c.kvm.effect.duration_ms, 550);
-        assert_eq!(c.kvm.effect.style, EffectStyle::Smoke);
+        assert_eq!(c.kvm.effect.duration_ms, 700);
+        assert_eq!(c.kvm.effect.style, EffectStyle::Rift);
         assert!(c.stream.enabled);
         assert!(!c.stream.sunshine_autostart);
         assert_eq!(c.stream.sunshine_formula, "lizardbyte/homebrew/sunshine");

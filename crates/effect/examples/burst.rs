@@ -1,5 +1,5 @@
 //! Shows one burst, for checking the overlay by eye:
-//! `cargo run -p effect --example burst -- [smoke|glow|particles] [x y] [duration_ms] [left|right|top|bottom]`
+//! `cargo run -p effect --example burst -- [rift|smoke|glow|particles] [x y] [duration_ms] [left|right|top|bottom]`
 //! Without x y it uses the cursor position; without an edge it is detected
 //! from the position. On macOS the overlay must run on the main thread with an
 //! AppKit run loop, so this example is Windows-only.
@@ -16,7 +16,8 @@ fn main() {
     let style = match args.first().map(String::as_str) {
         Some("particles") => EffectStyle::Particles,
         Some("glow") => EffectStyle::Glow,
-        _ => EffectStyle::Smoke,
+        Some("smoke") => EffectStyle::Smoke,
+        _ => EffectStyle::Rift,
     };
     let (x, y) = match (args.get(1).and_then(|v| v.parse().ok()), args.get(2).and_then(|v| v.parse().ok())) {
         (Some(x), Some(y)) => (x, y),

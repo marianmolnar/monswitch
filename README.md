@@ -12,9 +12,9 @@ Windows and macOS.
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS-lightgrey)
 
-<img src="docs/img/effects.png" alt="Edge transition effect: smoke, glow and particles" width="760">
+<img src="docs/img/effects.png" alt="Edge transition effect: rift (exit and entry), smoke, glow and particles" width="760">
 
-<sub>The edge transition effect: <i>smoke</i> (default), <i>glow</i> and <i>particles</i>.</sub>
+<sub>The edge transition effect: <i>rift</i> (default; the cursor leaving, then entering), <i>smoke</i>, <i>glow</i> and <i>particles</i>.</sub>
 
 [Czech version / Česky](README.cs.md)
 
@@ -203,7 +203,7 @@ left and where it entered. monswitch reads Deskflow's log (`switch from "A" to "
 shows the effect on the server and tells the client over UDP (port `24810`; the client finds the
 server by itself). The overlay is a native transparent window that never takes clicks or focus.
 
-Settings → *Edge transition effect*: style (`smoke`, `glow`, `particles`), duration, color.
+Settings → *Edge transition effect*: style (`rift`, `smoke`, `glow`, `particles`), duration, color.
 Windows may ask about the firewall on first start – allow private networks.
 
 ## Streaming
@@ -290,7 +290,7 @@ crates/stream     Moonlight profiles, Sunshine on/off
 apps/tray         Tauri 2 tray / menu-bar app (React + TypeScript + Tailwind)
 ```
 
-`cargo test` runs without a monitor; `cargo run -p effect --example burst -- smoke` shows the
+`cargo test` runs without a monitor; `cargo run -p effect --example burst -- rift` shows the
 effect on Windows.
 
 ## Contributing

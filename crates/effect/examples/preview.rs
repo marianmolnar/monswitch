@@ -1,31 +1,37 @@
 //! Renders the effect styles into an image for the README:
 //! `cargo run -p effect --example preview -- docs/img/effects.bmp`
-//! One row per style, four frames each, composited over a dark background
+//! One row per style (rift twice: exit, entry), five frames each, composited over a dark background
 //! with the burst on a vertical screen edge (like PbP: left half | right half).
 
 use std::fs;
 
 use ddc_core::config::EffectStyle;
 use effect::render::render;
-use effect::Edge;
+use effect::{Edge, Kind};
 
 const CELL: usize = 280;
-const FRAMES: [f32; 4] = [0.08, 0.25, 0.45, 0.7];
+const FRAMES: [f32; 5] = [0.06, 0.2, 0.4, 0.62, 0.86];
 
 fn main() {
     let out = std::env::args().nth(1).unwrap_or_else(|| "effects.bmp".into());
-    let styles = [EffectStyle::Smoke, EffectStyle::Glow, EffectStyle::Particles];
+    let styles = [
+        (EffectStyle::Rift, Kind::Exit),
+        (EffectStyle::Rift, Kind::Entry),
+        (EffectStyle::Smoke, Kind::Exit),
+        (EffectStyle::Glow, Kind::Exit),
+        (EffectStyle::Particles, Kind::Exit),
+    ];
     let (w, h) = (CELL * FRAMES.len(), CELL * styles.len());
     let mut img = vec![[0u8; 3]; w * h];
 
-    for (row, style) in styles.iter().enumerate() {
+    for (row, (style, kind)) in styles.iter().enumerate() {
         for (col, t) in FRAMES.iter().enumerate() {
             let mut buf = vec![0u32; CELL * CELL];
-            let rgb = match style {
-                EffectStyle::Smoke => (0xF2, 0xF6, 0xFF),
+            let rgb = match (style, kind) {
+                (EffectStyle::Smoke, _) | (EffectStyle::Rift, Kind::Entry) => (0xF2, 0xF6, 0xFF),
                 _ => (0x38, 0xBD, 0xF8),
             };
-            render(&mut buf, CELL, CELL, *t, *style, rgb, 7, Some(Edge::Right));
+            render(&mut buf, CELL, CELL, *t, *style, rgb, 7, Some(Edge::Right), *kind);
             for y in 0..CELL {
                 for x in 0..CELL {
                     // background: two "screens" meeting in the middle of the cell

@@ -93,8 +93,8 @@ screen_name = ""
 # the server from deskflow-core's log, or set peer = "<server address>".
 [kvm.effect]
 enabled     = true
-style       = "smoke"      # "smoke" (mist + light along the edge) | "glow" | "particles"
-duration_ms = 550
+style       = "rift"       # "rift" (portal on the edge) | "smoke" (mist + light along the edge) | "glow" | "particles"
+duration_ms = 700
 color       = "#F2F6FF"
 port        = 24810
 peer        = ""

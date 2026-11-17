@@ -202,7 +202,7 @@ impl Window {
     fn frame(&mut self, b: &Burst, size: usize, t: f32, seed: u32) {
         let max = self.max;
         let size = size.min(max);
-        render::render(self.pixels(), max, size, t, b.look.style, b.look.rgb, seed, b.edge);
+        render::render(self.pixels(), max, size, t, b.look.style, b.look.rgb, seed, b.edge, b.kind);
         let half = (size / 2) as i32;
         let dst = POINT { x: b.x.round() as i32 - half, y: b.y.round() as i32 - half };
         let sz = SIZE { cx: size as i32, cy: size as i32 };
@@ -277,6 +277,8 @@ fn run(mut w: Window, rx: Receiver<Burst>) {
                 let factor = match (b.look.style, b.kind) {
                     (EffectStyle::Smoke, Kind::Exit) => SMOKE_FACTOR,
                     (EffectStyle::Smoke, Kind::Entry) => SMOKE_FACTOR * 0.8,
+                    (EffectStyle::Rift, Kind::Exit) => SMOKE_FACTOR,
+                    (EffectStyle::Rift, Kind::Entry) => SMOKE_FACTOR * 0.85,
                     (_, Kind::Exit) => 1.0,
                     (_, Kind::Entry) => 0.6,
                 };

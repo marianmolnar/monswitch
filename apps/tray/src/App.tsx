@@ -14,7 +14,7 @@ type KvmConfig = {
   screen_name: string;
   effect: EffectConfig;
 };
-type EffectStyle = "smoke" | "glow" | "particles";
+type EffectStyle = "rift" | "smoke" | "glow" | "particles";
 type EffectConfig = {
   enabled: boolean;
   style: EffectStyle;
@@ -497,6 +497,7 @@ export default function App() {
               value={kvm.effect.style}
               onChange={(e) => setKvm({ ...kvm, effect: { ...kvm.effect, style: e.target.value as EffectStyle } })}
             >
+              <option value="rift">rift (portal on the edge)</option>
               <option value="smoke">mist + light along the edge</option>
               <option value="glow">glow</option>
               <option value="particles">particles</option>

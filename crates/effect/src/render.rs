@@ -167,6 +167,25 @@ pub fn puff(seed: u32, i: u32, inward: (f32, f32)) -> (f32, f32, f32, f32, f32, 
 /// Number of light streaks in the rift style.
 pub const STREAKS: u32 = 34;
 
+/// Burst radius: physical pixels at 100 % scaling on Windows, points on macOS
+/// (both are scaled to device pixels by the platform overlay).
+pub const RADIUS: f64 = 110.0;
+
+/// The largest [`size_factor`] (overlay buffers are allocated for it).
+pub const MAX_SIZE_FACTOR: f64 = 1.4;
+
+/// Side of the overlay square = 2 × [`RADIUS`] × this. Smoke and rift need
+/// more room (mist spreads, light runs along the edge).
+pub fn size_factor(style: EffectStyle, kind: Kind) -> f64 {
+    match (style, kind) {
+        (EffectStyle::Smoke | EffectStyle::Rift, Kind::Exit) => MAX_SIZE_FACTOR,
+        (EffectStyle::Smoke, Kind::Entry) => MAX_SIZE_FACTOR * 0.8,
+        (EffectStyle::Rift, Kind::Entry) => MAX_SIZE_FACTOR * 0.85,
+        (_, Kind::Exit) => 1.0,
+        (_, Kind::Entry) => 0.6,
+    }
+}
+
 /// Soft styles are shaded at half resolution from this size up and scaled up
 /// (they have no sharp detail, and it makes them ~4x cheaper).
 const HALF_RES_FROM: usize = 200;

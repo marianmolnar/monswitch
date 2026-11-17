@@ -16,9 +16,9 @@
 pub mod proto;
 
 mod link;
-// The software renderer draws only the Windows overlay; macOS uses Core
-// Animation and just the particle helpers.
-#[cfg_attr(not(windows), allow(dead_code))]
+// The software renderer draws the overlay on Windows and macOS; other
+// platforms have no overlay.
+#[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
 pub mod render;
 mod trail;
 

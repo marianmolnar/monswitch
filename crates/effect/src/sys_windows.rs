@@ -24,9 +24,8 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::render;
-use ddc_core::config::EffectStyle;
 use crate::trail::Rect;
-use crate::{Burst, Error, Kind};
+use crate::{Burst, Error};
 
 /// Physical-pixel coordinates on the calling thread (cursor, window
 /// positions) regardless of the host process' DPI awareness – the same space
@@ -60,11 +59,6 @@ pub fn display_bounds_at(x: f64, y: f64) -> Option<Rect> {
         Some(Rect { left: r.left as f64, top: r.top as f64, right: r.right as f64, bottom: r.bottom as f64 })
     }
 }
-
-/// Burst radius in physical pixels at 100 % scaling.
-const RADIUS_96DPI: f64 = 110.0;
-/// The smoke style needs more room (mist spreads, light runs along the edge).
-const SMOKE_FACTOR: f64 = 1.4;
 
 pub struct Overlay {
     tx: Sender<Burst>,
@@ -157,7 +151,7 @@ impl Window {
             }
 
             let scale = (GetDpiForSystem().max(96) as f64) / 96.0;
-            let max = (RADIUS_96DPI * SMOKE_FACTOR * scale * 2.0).ceil() as usize + 2;
+            let max = (render::RADIUS * render::MAX_SIZE_FACTOR * scale * 2.0).ceil() as usize + 2;
 
             let screen_dc = GetDC(std::ptr::null_mut());
             let mem_dc = CreateCompatibleDC(screen_dc);
@@ -274,15 +268,8 @@ fn run(mut w: Window, rx: Receiver<Burst>) {
         match rx.recv_timeout(wait) {
             Ok(b) => {
                 seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-                let factor = match (b.look.style, b.kind) {
-                    (EffectStyle::Smoke, Kind::Exit) => SMOKE_FACTOR,
-                    (EffectStyle::Smoke, Kind::Entry) => SMOKE_FACTOR * 0.8,
-                    (EffectStyle::Rift, Kind::Exit) => SMOKE_FACTOR,
-                    (EffectStyle::Rift, Kind::Entry) => SMOKE_FACTOR * 0.85,
-                    (_, Kind::Exit) => 1.0,
-                    (_, Kind::Entry) => 0.6,
-                };
-                let size = (RADIUS_96DPI * w.scale * factor * 2.0).round() as usize;
+                let factor = render::size_factor(b.look.style, b.kind);
+                let size = (render::RADIUS * w.scale * factor * 2.0).round() as usize;
                 anim = Some(Anim { burst: b, start: Instant::now(), size, seed });
                 if let Some(a) = &anim {
                     w.frame(&a.burst, a.size, 0.0, a.seed);

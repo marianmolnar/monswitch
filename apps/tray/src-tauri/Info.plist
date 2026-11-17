@@ -5,5 +5,10 @@
   <!-- menubar-only app: no Dock icon, no app switcher entry -->
   <key>LSUIElement</key>
   <true/>
+  <!-- deskflow-core (started by monswitch) and the edge effect talk to the
+       other machine; without Local Network access macOS fails them with
+       "No route to host" -->
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>monswitch runs Deskflow (shared keyboard and mouse) and sends the edge effect to the other computer on your local network.</string>
 </dict>
 </plist>

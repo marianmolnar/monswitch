@@ -81,6 +81,8 @@ struct AppState {
     effects: Mutex<Option<Effects>>,
     /// deskflow-core events; taken by the event thread in setup.
     core_events: Mutex<Option<Receiver<CoreEvent>>>,
+    /// File transfer between the machines (created in setup).
+    xfer: Mutex<Option<xfer::Bridge>>,
 }
 
 // ---- edge transition effect ----------------------------------------------------
@@ -120,6 +122,11 @@ fn setup_effects(app: &AppHandle, cfg: &Config) {
     let spawned = std::thread::Builder::new().name("kvm-events".into()).spawn(move || {
         for ev in rx {
             let state = handle.state::<AppState>();
+            if let CoreEvent::ServerAddress(host) = &ev {
+                if let Some(x) = lock(&state.xfer).as_ref() {
+                    x.set_peer(host);
+                }
+            }
             let effects = lock(&state.effects);
             if let Some(fx) = effects.as_ref() {
                 fx.on_core_event(&ev);
@@ -128,6 +135,72 @@ fn setup_effects(app: &AppHandle, cfg: &Config) {
     });
     if let Err(e) = spawned {
         log::warn!("effect: cannot start event thread: {e}");
+    }
+}
+
+// ---- file transfer -----------------------------------------------------------
+
+/// "photos/a.jpg 42 %" style text for the tray tooltip.
+fn xfer_text(ev: &xfer::Event) -> Option<String> {
+    use xfer::{Direction, Event};
+    let verb = |d: &Direction| if *d == Direction::Send { "Sending" } else { "Receiving" };
+    match ev {
+        Event::Progress(p) => {
+            let pct = p.done.saturating_mul(100).checked_div(p.total).unwrap_or(100);
+            Some(format!("{} {} – {pct} %", verb(&p.dir), p.name))
+        }
+        Event::Done { dir, name, result: Ok(()), .. } => Some(format!("{} {name} – done", verb(dir))),
+        Event::Done { name, result: Err(e), .. } => Some(format!("Transfer of {name} failed: {e}")),
+        Event::RemoteOffer(o) => Some(format!(
+            "{} copied {} item(s) – paste to transfer",
+            o.from,
+            o.entries.iter().filter(|e| e.is_top_level()).count()
+        )),
+        _ => None,
+    }
+}
+
+/// Starts the file transfer service + clipboard bridge (while the KVM is used).
+fn setup_xfer(app: &AppHandle, cfg: &Config) {
+    if !cfg.xfer.enabled || cfg.kvm.role == KvmRole::Off {
+        return;
+    }
+    let name = Some(cfg.kvm.screen_name.trim().to_string())
+        .filter(|n| !n.is_empty())
+        .or_else(|| std::env::var("COMPUTERNAME").ok())
+        .or_else(|| std::env::var("HOSTNAME").ok())
+        .unwrap_or_else(|| "monswitch".into());
+    let main = app.clone();
+    let run_on_main: xfer::clip::RunOnMain = Arc::new(move |f| {
+        if let Err(e) = main.run_on_main_thread(f) {
+            log::warn!("xfer: {e}");
+        }
+    });
+    let opts = xfer::BridgeOptions {
+        cfg: &cfg.xfer,
+        name: &name,
+        deskflow_settings: None,
+        run_on_main: Some(run_on_main),
+        cache_dir: std::env::temp_dir().join("monswitch-xfer"),
+    };
+    let handle = app.clone();
+    let on_event = move |ev: &xfer::Event| {
+        if let Some(text) = xfer_text(ev) {
+            log::info!("xfer: {text}");
+            if let Some(tray) = handle.tray_by_id(TRAY_ID) {
+                let _ = tray.set_tooltip(Some(format!("monswitch – {text}")));
+            }
+        }
+    };
+    match xfer::Bridge::start(opts, on_event) {
+        Ok(b) => {
+            let peer = cfg.kvm.effect.peer.trim();
+            if !peer.is_empty() {
+                b.set_peer(peer);
+            }
+            *lock(&app.state::<AppState>().xfer) = Some(b);
+        }
+        Err(e) => log::warn!("xfer: file transfer off: {e}"),
     }
 }
 
@@ -880,6 +953,7 @@ fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         log::warn!("autostart: {e}");
     }
     refresh(&handle, true);
+    setup_xfer(&handle, &cfg);
     setup_effects(&handle, &cfg);
     if cfg.stream.sunshine_autostart {
         set_sunshine(&handle, true);
@@ -918,6 +992,7 @@ pub fn run() {
         kvm: Mutex::new(Supervisor::new(cfg.kvm.clone()).with_events(core_tx)),
         effects: Mutex::new(None),
         core_events: Mutex::new(Some(core_rx)),
+        xfer: Mutex::new(None),
         config_path,
         config_error,
         ctl: Mutex::new(Controller::new(cfg.clone(), Selector::Model(cfg.monitor.model.clone()))),

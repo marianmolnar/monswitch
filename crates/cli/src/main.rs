@@ -84,6 +84,32 @@ enum Cmd {
         #[command(subcommand)]
         action: Option<ConfigCmd>,
     },
+    /// File transfer to/from the other machine (TLS with Deskflow's pairing)
+    Xfer {
+        #[command(subcommand)]
+        action: XferCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum XferCmd {
+    /// Print this machine's certificate fingerprint and the trusted ones
+    Fingerprint,
+    /// Offer files/folders to the other machine and serve them until Ctrl+C
+    Send {
+        #[arg(required = true, num_args = 1..)]
+        paths: Vec<PathBuf>,
+        /// Other machine (host or host:port; default [xfer].peer)
+        #[arg(long)]
+        peer: Option<String>,
+    },
+    /// Wait for offers from the other machine and download them into DIR
+    Receive {
+        dir: PathBuf,
+        /// Other machine (host or host:port; default [xfer].peer)
+        #[arg(long)]
+        peer: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -158,6 +184,10 @@ fn run(cli: Cli) -> Result<()> {
     // Commands that need no monitor access.
     match &cli.cmd {
         Cmd::Config { action } => return cmd_config(&config_path, action.as_ref()),
+        Cmd::Xfer { action } => {
+            let (cfg, _) = Config::load_or_init(&config_path)?;
+            return cmd_xfer(&cfg, action);
+        }
         Cmd::Probe { diff: Some(files), .. } => return cmd_diff(&files[0], &files[1]),
         _ => {}
     }
@@ -241,7 +271,7 @@ fn run(cli: Cli) -> Result<()> {
             let mon = connect_monitor(&cfg, &selector)?;
             cmd_pbp(&cfg, &mon, action)
         }
-        Cmd::Config { .. } => Ok(()), // handled above
+        Cmd::Config { .. } | Cmd::Xfer { .. } => Ok(()), // handled above
     }
 }
 
@@ -623,6 +653,71 @@ fn parse_value(s: &str) -> std::result::Result<u16, String> {
         t.parse::<u16>()
     };
     r.map_err(|e| format!("invalid value '{s}' (decimal, or hex as 0x0F): {e}"))
+}
+
+fn cmd_xfer(cfg: &Config, action: &XferCmd) -> Result<()> {
+    use xfer::{trust, Event};
+
+    let (identity, trust_list) = xfer::load_tls(&cfg.xfer, None)?;
+    if let XferCmd::Fingerprint = action {
+        println!("this machine: {}", trust::pretty(&identity.fingerprint()));
+        println!("TLS folder:   {}", trust_list.dir.display());
+        let fps = trust_list.fingerprints();
+        if fps.is_empty() {
+            println!("trusted:      none – pair the machines in Deskflow or add [xfer].trusted");
+        }
+        for f in fps {
+            println!("trusted:      {}", trust::pretty(&f));
+        }
+        return Ok(());
+    }
+    let name = std::env::var("COMPUTERNAME")
+        .or_else(|_| std::env::var("HOSTNAME"))
+        .unwrap_or_else(|_| "monswitch".into());
+    let (tx, rx) = std::sync::mpsc::channel();
+    let svc = xfer::Service::start(&cfg.xfer, &name, &identity, trust_list, tx)?;
+    let peer = match action {
+        XferCmd::Send { peer, .. } | XferCmd::Receive { peer, .. } => peer.clone(),
+        XferCmd::Fingerprint => None,
+    };
+    if let Some(p) = peer {
+        svc.set_peer(&p);
+    }
+    eprintln!("listening on port {} – Ctrl+C to stop", svc.port());
+    if let XferCmd::Send { paths, .. } = action {
+        let peer = svc.peer().ok_or_else(|| anyhow!("no peer – use --peer or set [xfer].peer"))?;
+        eprintln!("offering {} item(s) to {peer}", paths.len());
+        svc.offer_local(paths.clone());
+    }
+    let mut last_line = String::new();
+    for ev in rx {
+        match (&ev, action) {
+            (Event::RemoteOffer(o), XferCmd::Receive { dir, .. }) => {
+                eprintln!("{} offers {} item(s)", o.from, o.entries.iter().filter(|e| e.is_top_level()).count());
+                let client = svc.client();
+                let (o, dir) = (o.clone(), dir.clone());
+                std::thread::spawn(move || match client.download_all(&o, &dir) {
+                    Ok(paths) => paths.iter().for_each(|p| eprintln!("received {}", p.display())),
+                    Err(e) => eprintln!("download failed: {e}"),
+                });
+            }
+            (Event::Progress(p), _) => {
+                let pct = p.done.saturating_mul(100).checked_div(p.total).unwrap_or(100);
+                let line = format!("{:?} {} {pct} %", p.dir, p.name);
+                if line != last_line {
+                    eprintln!("{line}");
+                    last_line = line;
+                }
+            }
+            (Event::Done { dir, name, result, .. }, _) => match result {
+                Ok(()) => eprintln!("{dir:?} {name} done"),
+                Err(e) => eprintln!("{dir:?} {name} failed: {e}"),
+            },
+            (Event::Peer(p), _) => eprintln!("other machine at {p}"),
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

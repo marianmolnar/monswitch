@@ -99,6 +99,32 @@ color       = "#F2F6FF"
 port        = 24810
 peer        = ""
 
+# ---- File transfer between the two machines ---------------------------------
+# Own TLS channel (not Deskflow) that reuses Deskflow's pairing: this machine's
+# Deskflow certificate and the fingerprints Deskflow trusts. Runs while
+# [kvm].role is not "off". Copy files on one machine, paste them on the other;
+# the transfer starts only when you paste.
+[xfer]
+enabled = true
+# TCP port, both machines.
+port = 24811
+# Other machine's address; empty = [kvm.effect].peer, the server from
+# deskflow-core's log, or learned from the other machine's first connection.
+peer = ""
+# Deskflow's TLS folder (deskflow.pem, trusted-servers, trusted-clients);
+# empty = found automatically.
+tls_dir = ""
+# Extra trusted SHA-256 fingerprints (hex, colons optional) – needed only when
+# Deskflow does not store the other machine's fingerprint (server without
+# client certificate checks). `monswitch xfer fingerprint` prints this machine's.
+trusted = []
+# Offer copied files to the other machine.
+clipboard = true
+# Reconnects per file after a network error before giving up (resumes where it stopped).
+retries = 5
+# Connect / read timeout.
+timeout_ms = 15000
+
 # ---- Streaming (Sunshine host + Moonlight client) ------------------------
 # Pair Moonlight with Sunshine on the other machine once (Moonlight GUI +
 # Sunshine web UI PIN). Each [[streams]] entry becomes a tray menu item.

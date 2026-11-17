@@ -22,6 +22,7 @@ ddc-core = { path = "../../../crates/ddc-core" }
 effect = { path = "../../../crates/effect" }
 kvm = { path = "../../../crates/kvm" }
 stream = { path = "../../../crates/stream" }
+xfer = { path = "../../../crates/xfer" }
 env_logger.workspace = true
 log.workspace = true
 serde.workspace = true

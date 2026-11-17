@@ -18,3 +18,4 @@ ddc-core = { path = "../ddc-core" }
 env_logger.workspace = true
 log.workspace = true
 serde_json.workspace = true
+xfer = { path = "../xfer" }

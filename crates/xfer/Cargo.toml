@@ -1,0 +1,51 @@
+[package]
+name = "xfer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "File transfer between the two machines: TLS over TCP, clipboard file copy/paste"
+
+[features]
+default = ["net"]
+# TLS transport (rustls + ring). Without it only the wire format, the local
+# offer and the clipboard code are built – used to type-check the macOS
+# clipboard code from Windows, where ring cannot be cross-compiled.
+net = ["dep:rustls"]
+
+[dependencies]
+ddc-core = { path = "../ddc-core" }
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+thiserror.workspace = true
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"], optional = true }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_DataExchange",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_Ole",
+    "Win32_System_SystemServices",
+    "Win32_System_Threading",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+windows-core = "0.62"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSArray", "NSDictionary", "NSString", "NSURL", "NSValue", "NSObject"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSPasteboard", "NSPasteboardItem"] }
+
+[dev-dependencies]
+tempfile = "3"
+rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }

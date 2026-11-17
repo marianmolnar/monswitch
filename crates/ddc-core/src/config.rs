@@ -27,6 +27,8 @@ pub struct Config {
     #[serde(default)]
     pub kvm: KvmConfig,
     #[serde(default)]
+    pub xfer: XferConfig,
+    #[serde(default)]
     pub stream: StreamConfig,
     /// Moonlight stream profiles (tray menu entries).
     #[serde(default)]
@@ -135,6 +137,44 @@ impl Default for KvmConfig {
             restart_delay_ms: 5000,
             screen_name: String::new(),
             effect: EffectConfig::default(),
+        }
+    }
+}
+
+/// `[xfer]` – file transfer between the two machines.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default)]
+pub struct XferConfig {
+    pub enabled: bool,
+    /// TCP port, both machines.
+    pub port: u16,
+    /// Other machine's address; empty = learned automatically.
+    pub peer: String,
+    /// Deskflow's TLS folder; empty = found automatically.
+    pub tls_dir: String,
+    /// Extra trusted SHA-256 certificate fingerprints (hex).
+    pub trusted: Vec<String>,
+    /// Offer copied files to the other machine.
+    pub clipboard: bool,
+    /// Reconnects per file after a network error.
+    pub retries: u32,
+    /// Connect / read timeout.
+    pub timeout_ms: u64,
+}
+
+impl Default for XferConfig {
+    /// Only a fallback for configs without [xfer]; real defaults live in
+    /// default_config.toml.
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            port: 24811,
+            peer: String::new(),
+            tls_dir: String::new(),
+            trusted: Vec::new(),
+            clipboard: true,
+            retries: 5,
+            timeout_ms: 15000,
         }
     }
 }

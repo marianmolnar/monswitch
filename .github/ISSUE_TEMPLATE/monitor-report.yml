@@ -1,0 +1,52 @@
+name: Monitor report
+description: Tell us whether monswitch works with your monitor (and help add a preset).
+title: "[monitor] <vendor> <model>"
+labels: ["monitor"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! Reports like this one become presets, so the next person with the same monitor
+        gets it working out of the box.
+  - type: input
+    id: model
+    attributes:
+      label: Monitor
+      placeholder: "ASUS ROG Swift PG27UCDM"
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Computers and connections
+      description: OS, GPU, cable / port for each computer.
+      placeholder: |
+        Windows 11, NVIDIA RTX 2070, DisplayPort
+        MacBook Pro (Apple Silicon), USB-C
+    validations:
+      required: true
+  - type: dropdown
+    id: inputs
+    attributes:
+      label: Does input switching work?
+      options:
+        - "Yes"
+        - "Partly (some inputs)"
+        - "No"
+    validations:
+      required: true
+  - type: textarea
+    id: caps
+    attributes:
+      label: Output of `monswitch list` and `monswitch caps`
+      render: text
+  - type: textarea
+    id: pbp
+    attributes:
+      label: PiP / PbP findings (optional)
+      description: Output of `monswitch probe --diff off.json pbp.json` and which OSD setting you changed.
+      render: text
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else

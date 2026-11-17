@@ -1,0 +1,13 @@
+[package]
+name = "kvm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Software KVM for PbP mode: supervises a Deskflow core process"
+
+[dependencies]
+ddc-core = { path = "../ddc-core" }
+log.workspace = true
+thiserror.workspace = true

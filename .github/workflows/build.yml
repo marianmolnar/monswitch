@@ -1,0 +1,75 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write # release upload on tags
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            bundles: |
+              target/release/bundle/nsis/*.exe
+              target/release/bundle/msi/*.msi
+          - os: macos-latest # Apple Silicon
+            bundles: |
+              target/release/bundle/dmg/*.dmg
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/tray/package-lock.json
+
+      # the tray crate embeds apps/tray/dist at compile time, so build the frontend first
+      - name: Frontend
+        working-directory: apps/tray
+        run: |
+          npm ci
+          npm run build
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Build tray app + installers
+        working-directory: apps/tray
+        run: npx tauri build
+
+      - name: Build CLI
+        run: cargo build --release -p monswitch
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: monswitch-${{ runner.os }}
+          path: |
+            ${{ matrix.bundles }}
+            target/release/monswitch
+            target/release/monswitch.exe
+          if-no-files-found: warn
+
+      - name: Release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.bundles }}

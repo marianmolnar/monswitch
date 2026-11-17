@@ -1,0 +1,20 @@
+[package]
+name = "monswitch"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "CLI for switching monitor inputs over DDC/CI"
+
+[[bin]]
+name = "monswitch"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+ddc-core = { path = "../ddc-core" }
+env_logger.workspace = true
+log.workspace = true
+serde_json.workspace = true

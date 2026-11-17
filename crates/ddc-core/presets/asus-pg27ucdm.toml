@@ -1,0 +1,26 @@
+# ASUS ROG Swift PG27UCDM (27" 4K QD-OLED) – inputs and PiP/PbP.
+# Tested on Windows 11 (NVIDIA, DisplayPort) and a MacBook Pro (USB-C).
+#
+# VCP 0x60 accepts 0F 11 12 1A (DisplayPort, HDMI 1, HDMI 2, USB-C).
+# 0xF4 = PiP/PbP mode: 0 off, 1–4 PiP window position (4 = bottom left),
+#        5 = PbP side by side.
+# 0xF5 = second-window source, input value in the high byte (0x1A00 = USB-C).
+# While PiP/PbP is on, 0x60 reports the second window's source.
+# The monitor briefly disappears from the OS after a PiP/PbP change.
+
+[monitor]
+model = "PG27UCDM"
+
+[inputs]
+dp1   = 0x0F
+hdmi1 = 0x11
+hdmi2 = 0x12
+usbc  = 0x1A
+
+[pbp]
+mode_code    = 0xF4
+off          = 0
+pip          = 4
+pbp          = 5
+source_code  = 0xF5
+source_shift = 8

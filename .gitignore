@@ -1,0 +1,13 @@
+/target/
+
+# probe snapshots (monswitch probe -o a.json) – root only, so that
+# package.json / tauri.conf.json under apps/ stay tracked
+/*.json
+probe-*.json
+
+node_modules/
+/apps/tray/dist/
+/apps/tray/src-tauri/gen/
+# personal notes (kept locally, not published)
+/monitor-switcher-zadani.md
+/docs/navod.html

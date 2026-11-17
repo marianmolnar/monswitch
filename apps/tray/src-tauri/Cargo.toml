@@ -1,0 +1,34 @@
+[package]
+name = "monswitch-tray"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "monswitch tray / menubar app"
+
+[lib]
+name = "monswitch_tray_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "monswitch-tray"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+ddc-core = { path = "../../../crates/ddc-core" }
+effect = { path = "../../../crates/effect" }
+kvm = { path = "../../../crates/kvm" }
+stream = { path = "../../../crates/stream" }
+env_logger.workspace = true
+log.workspace = true
+serde.workspace = true
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-autostart = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-single-instance = "2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_UI_Input_KeyboardAndMouse"] }

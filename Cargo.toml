@@ -1,0 +1,30 @@
+[workspace]
+resolver = "2"
+members = ["crates/ddc-core", "crates/cli", "crates/kvm", "crates/stream", "crates/effect", "apps/tray/src-tauri"]
+# The tray app needs the built frontend (apps/tray/dist), so a plain
+# `cargo build` / `cargo clippy` at the root only builds the CLI.
+# Tray: `cd apps/tray && npm run tauri build` (or `cargo build -p monswitch-tray`).
+default-members = ["crates/ddc-core", "crates/cli", "crates/kvm", "crates/stream", "crates/effect"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT"
+repository = "https://github.com/marianmolnar/monswitch"
+
+[workspace.dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+ddc-hi = "0.4"
+dirs = "5"
+env_logger = "0.11"
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+toml = "0.8"
+
+[profile.release]
+lto = "thin"
+strip = true

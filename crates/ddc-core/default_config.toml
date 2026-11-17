@@ -1,0 +1,153 @@
+# monswitch configuration
+# Windows: %APPDATA%\monswitch\config.toml
+# macOS:   ~/.config/monswitch/config.toml
+#
+# Any key missing here falls back to the built-in default.
+# Known monitors: `monswitch config preset list` / `monswitch config preset <name>`.
+
+[monitor]
+# Case-insensitive substring of the model name (EDID name or "model(...)"
+# from the MCCS capabilities string). Empty = the first monitor that answers
+# DDC/CI. See `monswitch list`.
+model = ""
+# Preferred ddc-hi backend when the same monitor shows up more than once.
+# Windows: "winapi" (dxva2) first; if it cannot read [vcp].input_source the
+# next matching entry (e.g. "nvapi") is used automatically.
+# macOS has only "macos", so this has no effect there. Empty = list order.
+backend = "winapi"
+
+[ddc]
+# Timeout for a single get/set VCP operation.
+timeout_ms = 3000
+# Reading the capabilities string is slow on most monitors.
+caps_timeout_ms = 8000
+# Initial monitor enumeration.
+enumerate_timeout_ms = 15000
+# Retries after a failed or timed-out operation.
+retries = 1
+# Minimum pause between two DDC commands.
+min_delay_ms = 50
+# Some monitors disappear for a few seconds after a PiP/PbP change while the
+# OS re-detects them. Keep looking for the monitor this long before failing.
+rediscover_timeout_ms  = 8000
+rediscover_interval_ms = 500
+
+[vcp]
+# MCCS "Input Select" feature code.
+input_source = 0x60
+
+# Input alias -> value written to [vcp].input_source.
+# These are the MCCS standard values. USB-C / Thunderbolt inputs have no
+# standard value (often 0x1A or 0x1B) – `monswitch caps` lists the values your
+# monitor accepts; try them with `monswitch input 0x1B`.
+[inputs]
+dp1   = 0x0F
+dp2   = 0x10
+hdmi1 = 0x11
+hdmi2 = 0x12
+
+[probe]
+# Range of (manufacturer-specific) VCP codes read by `monswitch probe`.
+range_start = 0xE0
+range_end   = 0xFF
+
+# PiP/PbP control has no standard VCP code; it is enabled by a monitor
+# preset or found with `monswitch probe --diff` (see the README):
+# [pbp]
+# mode_code    = 0xF4   # VCP code of the PiP/PbP mode
+# off          = 0      # value: off
+# pip          = 4      # value: PiP (default position)
+# pbp          = 5      # value: side by side
+# source_code  = 0xF5   # VCP code of the second window's source (optional)
+# source_shift = 8      # second-window source = [inputs] value << shift
+
+# ---- Tray app (apps/tray) – edited by its settings window -------------
+[tray]
+# Start the tray app at login.
+autostart  = false
+# Global hotkey for PbP on/off ("Ctrl+Alt+Shift+3"; Alt = Option on macOS).
+# Empty = no hotkey.
+pbp_hotkey = ""
+
+# ---- Software KVM in PbP mode (Deskflow) --------------------------------
+# Deskflow is configured once in its own GUI (screens, layout, clipboard,
+# TLS trust); monswitch only starts/stops deskflow-core.
+[kvm]
+# "server" = the machine that gets the monitor's USB keyboard/mouse in PbP
+#            (deskflow-core runs only while PiP/PbP is on),
+# "client" = the other machine (runs all the time), "off" = disabled.
+role = "off"
+# Path to deskflow-core; empty = default install location.
+deskflow_core = ""
+# Deskflow settings file passed as --settings; empty = Deskflow's default.
+settings = ""
+# How often the server checks the PbP state on the monitor.
+poll_ms = 3000
+# Wait before restarting a deskflow-core that exited.
+restart_delay_ms = 5000
+# This machine's Deskflow screen name; empty = computerName from Deskflow's settings.
+screen_name = ""
+
+# Burst at the screen edge when the cursor crosses to the other machine.
+# The server tells the client over UDP (port, both machines); the client finds
+# the server from deskflow-core's log, or set peer = "<server address>".
+[kvm.effect]
+enabled     = true
+style       = "smoke"      # "smoke" (mist + light along the edge) | "glow" | "particles"
+duration_ms = 550
+color       = "#F2F6FF"
+port        = 24810
+peer        = ""
+
+# ---- Streaming (Sunshine host + Moonlight client) ------------------------
+# Pair Moonlight with Sunshine on the other machine once (Moonlight GUI +
+# Sunshine web UI PIN). Each [[streams]] entry becomes a tray menu item.
+[stream]
+# Moonlight executable; empty = default install location.
+moonlight = ""
+# Show the [[streams]] entries in the tray menu (false = never start Moonlight).
+enabled = true
+# Start Sunshine (this machine as stream host) with monswitch, stop it on quit.
+# Windows: controls the SunshineService service (allow it once in the settings).
+sunshine_autostart = false
+# Sunshine executable (macOS/Linux); empty = default install location.
+sunshine = ""
+# macOS: a Sunshine installed from this Homebrew formula is started/stopped
+# with `brew services`, so it keeps its own Screen Recording permission
+# (started directly by monswitch it would need that permission for monswitch).
+# Empty = always start the executable directly.
+sunshine_formula = "lizardbyte/homebrew/sunshine"
+
+# host    = the other machine as Moonlight knows it (name, IP or UUID);
+#           empty = the menu item is disabled until you set it.
+# app     = Sunshine app ("Desktop" exists by default).
+# args    = Moonlight options (see `Moonlight stream --help`).
+# only_on = show only on "windows" / "macos" / "linux"; empty = everywhere.
+# "--resolution native" = native resolution of a MacBook's built-in display
+# (detected at launch; dropped elsewhere, Moonlight then uses its own setting).
+[[streams]]
+name    = "Other computer (window)"
+host    = ""
+app     = "Desktop"
+args    = ["--display-mode", "windowed", "--fps", "60", "--video-codec", "HEVC", "--absolute-mouse"]
+only_on = ""
+
+[[streams]]
+name    = "Game (fullscreen)"
+host    = ""
+app     = "Desktop"
+args    = ["--display-mode", "fullscreen", "--resolution", "native", "--fps", "120", "--video-codec", "HEVC", "--game-optimization", "--no-absolute-mouse", "--frame-pacing"]
+only_on = ""
+
+# Tray menu entries: label, input alias from [inputs], global hotkey.
+# With Shift because on Windows Ctrl+Alt = AltGr, so Ctrl+Alt+<digit> types a
+# character on many keyboard layouts.
+[[machines]]
+name   = "Computer 1"
+input  = "dp1"
+hotkey = "Ctrl+Alt+Shift+1"
+
+[[machines]]
+name   = "Computer 2"
+input  = "hdmi1"
+hotkey = "Ctrl+Alt+Shift+2"

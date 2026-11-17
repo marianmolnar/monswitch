@@ -167,20 +167,28 @@ pub fn puff(seed: u32, i: u32, inward: (f32, f32)) -> (f32, f32, f32, f32, f32, 
 /// Number of light streaks in the rift style.
 pub const STREAKS: u32 = 34;
 
-/// Burst radius: physical pixels at 100 % scaling on Windows, points on macOS
-/// (both are scaled to device pixels by the platform overlay).
-pub const RADIUS: f64 = 110.0;
+/// Burst radius as a fraction of the height of the display it is shown on.
+/// Each platform measures that height in its own units (physical pixels on
+/// Windows, points on macOS), so on one monitor a burst has the same physical
+/// size on both machines whatever the OS scaling or resolution. 0.075 of a
+/// 2160-pixel display is 162 px (the old fixed 110 px at 150 % scaling).
+pub const RADIUS_OF_HEIGHT: f64 = 0.075;
+
+/// Burst radius on a display `height` units tall (same units).
+pub fn radius_for(height: f64) -> f64 {
+    RADIUS_OF_HEIGHT * height.max(1.0)
+}
 
 /// The largest [`size_factor`] (overlay buffers are allocated for it).
 pub const MAX_SIZE_FACTOR: f64 = 1.4;
 
-/// Side of the overlay square = 2 × [`RADIUS`] × this. Smoke and rift need
-/// more room (mist spreads, light runs along the edge).
+/// Side of the overlay square = 2 × radius × this. Smoke and rift need more
+/// room (mist spreads, light runs along the edge). A rift is as big where the
+/// cursor enters as where it leaves, so both machines show the same size.
 pub fn size_factor(style: EffectStyle, kind: Kind) -> f64 {
     match (style, kind) {
-        (EffectStyle::Smoke | EffectStyle::Rift, Kind::Exit) => MAX_SIZE_FACTOR,
+        (EffectStyle::Rift, _) | (EffectStyle::Smoke, Kind::Exit) => MAX_SIZE_FACTOR,
         (EffectStyle::Smoke, Kind::Entry) => MAX_SIZE_FACTOR * 0.8,
-        (EffectStyle::Rift, Kind::Entry) => MAX_SIZE_FACTOR * 0.85,
         (_, Kind::Exit) => 1.0,
         (_, Kind::Entry) => 0.6,
     }
@@ -729,6 +737,18 @@ mod tests {
         assert!(side(60, 140) > side(160, 240) * 2, "the portal bulges into the screen");
         render(&mut buf, size, size, 1.0, EffectStyle::Rift, (56, 189, 248), 5, Some(Edge::Right), Kind::Entry);
         assert!(buf.iter().all(|p| p >> 24 == 0));
+    }
+
+    #[test]
+    fn burst_size_follows_the_display_not_the_os_scaling() {
+        // the same monitor seen by Windows (physical px) and macOS at 1:1 and HiDPI (points)
+        let windows = radius_for(2160.0);
+        assert!((windows - 162.0).abs() < 1e-9);
+        assert!((radius_for(2160.0) - windows).abs() < 1e-9);
+        assert!((radius_for(1080.0) * 2.0 - windows).abs() < 1e-9);
+        // a rift is the same size on the machine the cursor leaves and the one it enters
+        assert_eq!(size_factor(EffectStyle::Rift, Kind::Entry), size_factor(EffectStyle::Rift, Kind::Exit));
+        assert!(size_factor(EffectStyle::Glow, Kind::Entry) < size_factor(EffectStyle::Glow, Kind::Exit));
     }
 
     #[test]

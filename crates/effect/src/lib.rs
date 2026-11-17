@@ -127,6 +127,32 @@ pub fn edge_at(x: f64, y: f64) -> Option<Edge> {
     sys::display_bounds_at(x, y).and_then(|r| r.edge_of(x, y, EDGE_TOLERANCE))
 }
 
+/// Bursts this close to an edge are moved onto it (platform units: physical
+/// pixels on Windows, points on macOS). On a fast move the last trail sample
+/// (exit) or the settled cursor (entry) can be a few centimetres inside the
+/// screen, but the burst belongs on the edge the cursor crossed.
+const SNAP_DISTANCE: f64 = 300.0;
+
+/// Display height assumed when the display under a burst is unknown.
+const FALLBACK_DISPLAY_HEIGHT: f64 = 1440.0;
+
+/// Burst radius at (x, y), in the platform's units: a fixed fraction of the
+/// height of the display there (see [`render::RADIUS_OF_HEIGHT`]).
+#[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
+pub(crate) fn burst_radius(x: f64, y: f64) -> f64 {
+    let height = sys::display_bounds_at(x, y).map_or(FALLBACK_DISPLAY_HEIGHT, |r| r.bottom - r.top);
+    render::radius_for(height)
+}
+
+/// (x, y) moved onto the nearest screen edge if it is within
+/// [`SNAP_DISTANCE`], with that edge; otherwise unchanged with no edge.
+pub fn snap_to_edge(x: f64, y: f64) -> (f64, f64, Option<Edge>) {
+    match sys::display_bounds_at(x, y).and_then(|r| r.snap_to_edge(x, y, SNAP_DISTANCE)) {
+        Some((sx, sy, edge)) => (sx, sy, Some(edge)),
+        None => (x, y, None),
+    }
+}
+
 /// Displays a burst. The tray app forwards it to the thread that owns the
 /// overlay (the main thread on macOS).
 pub type ShowFn = Arc<dyn Fn(Burst) + Send + Sync>;
@@ -263,7 +289,7 @@ impl Inner {
     }
 
     fn burst(&self, x: f64, y: f64, kind: Kind, look: Look) {
-        let edge = edge_at(x, y);
+        let (x, y, edge) = snap_to_edge(x, y);
         log::info!("effect: {kind:?} burst at {x:.0},{y:.0} ({edge:?})");
         (self.show)(Burst { x, y, kind, look, edge });
     }

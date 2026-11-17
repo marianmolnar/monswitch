@@ -204,7 +204,7 @@ impl Overlay {
     /// Main thread only (enforced by the type: `Overlay` is not `Send`).
     pub fn show(&self, b: Burst) {
         let inner = &*self.inner;
-        let r = render::RADIUS * render::size_factor(b.look.style, b.kind);
+        let r = crate::burst_radius(b.x, b.y) * render::size_factor(b.look.style, b.kind);
         let seed = inner.seed.get().wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
         inner.seed.set(seed);
         // SAFETY: AppKit / Core Animation calls on the main thread.

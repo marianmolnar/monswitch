@@ -24,18 +24,37 @@ pub struct Rect {
 }
 
 impl Rect {
-    /// The screen edge (x, y) lies on, if it is within `tol` of one.
-    pub fn edge_of(&self, x: f64, y: f64, tol: f64) -> Option<Edge> {
-        let d = [
+    /// The nearest edge to (x, y) and the distance to it (right/bottom are exclusive).
+    fn nearest_edge(&self, x: f64, y: f64) -> (f64, Edge) {
+        [
             (x - self.left, Edge::Left),
             (self.right - 1.0 - x, Edge::Right),
             (y - self.top, Edge::Top),
             (self.bottom - 1.0 - y, Edge::Bottom),
-        ];
-        d.iter()
-            .filter(|(dist, _)| *dist <= tol)
-            .min_by(|a, b| a.0.total_cmp(&b.0))
-            .map(|(_, e)| *e)
+        ]
+        .into_iter()
+        .fold((f64::MAX, Edge::Left), |best, d| if d.0 < best.0 { d } else { best })
+    }
+
+    /// The screen edge (x, y) lies on, if it is within `tol` of one.
+    pub fn edge_of(&self, x: f64, y: f64, tol: f64) -> Option<Edge> {
+        let (dist, edge) = self.nearest_edge(x, y);
+        (dist <= tol).then_some(edge)
+    }
+
+    /// (x, y) moved straight onto the nearest edge, with that edge, if the
+    /// edge is at most `max` away.
+    pub fn snap_to_edge(&self, x: f64, y: f64, max: f64) -> Option<(f64, f64, Edge)> {
+        let (dist, edge) = self.nearest_edge(x, y);
+        if dist > max {
+            return None;
+        }
+        Some(match edge {
+            Edge::Left => (self.left, y, edge),
+            Edge::Right => (self.right - 1.0, y, edge),
+            Edge::Top => (x, self.top, edge),
+            Edge::Bottom => (x, self.bottom - 1.0, edge),
+        })
     }
 
     /// Distance to the nearest edge (right/bottom are exclusive).
@@ -166,5 +185,18 @@ mod tests {
         assert_eq!(r.edge_of(0.0, 5.0, 40.0), Some(Edge::Left));
         assert_eq!(r.edge_of(900.0, 2150.0, 40.0), Some(Edge::Bottom));
         assert_eq!(r.edge_of(900.0, 900.0, 40.0), None);
+    }
+
+    #[test]
+    fn snaps_onto_the_nearest_edge() {
+        let r = Rect { left: -1920.0, top: 0.0, right: 0.0, bottom: 2160.0 };
+        // a fast move left the point ~2 cm inside
+        assert_eq!(r.snap_to_edge(-1800.0, 700.0, 300.0), Some((-1920.0, 700.0, Edge::Left)));
+        assert_eq!(r.snap_to_edge(-40.0, 1000.0, 300.0), Some((-1.0, 1000.0, Edge::Right)));
+        assert_eq!(r.snap_to_edge(-900.0, 2100.0, 300.0), Some((-900.0, 2159.0, Edge::Bottom)));
+        // already on the edge: unchanged
+        assert_eq!(r.snap_to_edge(-1920.0, 5.5, 300.0), Some((-1920.0, 5.5, Edge::Left)));
+        // too far from any edge (e.g. the warped-to centre): left alone
+        assert_eq!(r.snap_to_edge(-960.0, 1080.0, 300.0), None);
     }
 }

@@ -13,14 +13,12 @@ use windows_sys::Win32::Graphics::Gdi::{
     DIB_RGB_COLORS, HBITMAP, HDC, MONITORINFO, MONITOR_DEFAULTTONULL,
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows_sys::Win32::UI::HiDpi::{
-    GetDpiForSystem, SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
-};
+use windows_sys::Win32::UI::HiDpi::{SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetCursorPos, PeekMessageW, RegisterClassW,
-    SetWindowPos, ShowWindow, TranslateMessage, UpdateLayeredWindow, HWND_TOPMOST, MSG, PM_REMOVE, SWP_NOACTIVATE,
-    SWP_NOMOVE, SWP_NOSIZE, SW_HIDE, SW_SHOWNOACTIVATE, ULW_ALPHA, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
-    WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetCursorPos, GetSystemMetrics, PeekMessageW,
+    RegisterClassW, SetWindowPos, ShowWindow, TranslateMessage, UpdateLayeredWindow, HWND_TOPMOST, MSG, PM_REMOVE,
+    SM_CYVIRTUALSCREEN, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SW_HIDE, SW_SHOWNOACTIVATE, ULW_ALPHA, WNDCLASSW,
+    WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
 };
 
 use crate::render;
@@ -103,7 +101,6 @@ struct Window {
     bits: *mut u32,
     /// DIB is `max`×`max` pixels.
     max: usize,
-    scale: f64,
 }
 
 fn wide(s: &str) -> Vec<u16> {
@@ -150,8 +147,9 @@ impl Window {
                 return Err(Error::Overlay("CreateWindowExW failed".into()));
             }
 
-            let scale = (GetDpiForSystem().max(96) as f64) / 96.0;
-            let max = (render::RADIUS * render::MAX_SIZE_FACTOR * scale * 2.0).ceil() as usize + 2;
+            // big enough for the tallest display (physical pixels: the thread is DPI aware)
+            let tallest = GetSystemMetrics(SM_CYVIRTUALSCREEN).max(1080) as f64;
+            let max = (render::radius_for(tallest) * render::MAX_SIZE_FACTOR * 2.0).ceil() as usize + 2;
 
             let screen_dc = GetDC(std::ptr::null_mut());
             let mem_dc = CreateCompatibleDC(screen_dc);
@@ -183,7 +181,7 @@ impl Window {
                 return Err(Error::Overlay("CreateDIBSection failed".into()));
             }
             SelectObject(mem_dc, bitmap);
-            Ok(Self { hwnd, screen_dc, mem_dc, bitmap, bits: bits.cast(), max, scale })
+            Ok(Self { hwnd, screen_dc, mem_dc, bitmap, bits: bits.cast(), max })
         }
     }
 
@@ -269,7 +267,7 @@ fn run(mut w: Window, rx: Receiver<Burst>) {
             Ok(b) => {
                 seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
                 let factor = render::size_factor(b.look.style, b.kind);
-                let size = (render::RADIUS * w.scale * factor * 2.0).round() as usize;
+                let size = (crate::burst_radius(b.x, b.y) * factor * 2.0).round() as usize;
                 anim = Some(Anim { burst: b, start: Instant::now(), size, seed });
                 if let Some(a) = &anim {
                     w.frame(&a.burst, a.size, 0.0, a.seed);

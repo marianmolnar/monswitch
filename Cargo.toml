@@ -1,10 +1,10 @@
 [workspace]
 resolver = "2"
-members = ["crates/ddc-core", "crates/cli", "crates/kvm", "crates/stream", "crates/effect", "apps/tray/src-tauri"]
+members = ["crates/ddc-core", "crates/cli", "crates/kvm", "crates/stream", "crates/effect", "crates/dnd", "apps/tray/src-tauri"]
 # The tray app needs the built frontend (apps/tray/dist), so a plain
 # `cargo build` / `cargo clippy` at the root only builds the CLI.
 # Tray: `cd apps/tray && npm run tauri build` (or `cargo build -p monswitch-tray`).
-default-members = ["crates/ddc-core", "crates/cli", "crates/kvm", "crates/stream", "crates/effect"]
+default-members = ["crates/ddc-core", "crates/cli", "crates/kvm", "crates/stream", "crates/effect", "crates/dnd"]
 
 [workspace.package]
 version = "0.1.0"

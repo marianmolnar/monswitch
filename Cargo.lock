@@ -1080,6 +1080,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "dnd"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "thiserror 2.0.21",
+ "windows",
+ "windows-core",
+]
+
+[[package]]
 name = "dom_query"
 version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
